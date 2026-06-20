@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inkwell — Free PDF Editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --ink:#1B1F3B;
+    --paper:#F2EFE9;
+    --paper-2:#E8E3D8;
+    --red:#B8412F;
+    --green:#2D6A4F;
+    --graphite:#8C8579;
+    --line:#D8D2C4;
+    --display: 'Fraunces', Georgia, serif;
+    --body: 'Inter', system-ui, sans-serif;
+  }
+  @font-face{font-family:'Fraunces';src:local('Georgia');}
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--ink);font-family:var(--body);color:var(--paper);}
+  a{color:inherit;}
+
+  /* ---------- Header ---------- */
+  header{
+    padding:28px 36px 20px;
+    display:flex;align-items:baseline;justify-content:space-between;
+    border-bottom:1px solid rgba(242,239,233,0.12);
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand .mark{
+    font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:-0.02em;
+    position:relative;
+  }
+  .brand .mark::after{
+    content:"";position:absolute;left:-4px;right:-6px;bottom:2px;height:9px;
+    background:var(--red);opacity:0.55;z-index:-1;transform:rotate(-1deg);
+  }
+  .brand .tag{font-size:12px;color:var(--graphite);text-transform:uppercase;letter-spacing:.12em;}
+  .free-badge{
+    font-family:var(--display);font-style:italic;font-size:13px;color:var(--paper);
+    border:1px solid rgba(242,239,233,0.35);padding:5px 12px;border-radius:999px;
+  }
+
+  /* ---------- Hero / Drop zone ---------- */
+  .stage{padding:18px 36px 60px;max-width:1180px;margin:0 auto;}
+  .hero{padding:30px 0 18px;}
+  .hero h1{
+    font-family:var(--display);font-weight:600;font-size:clamp(28px,4vw,46px);
+    line-height:1.05;margin:0 0 10px;letter-spacing:-0.01em;max-width:720px;
+  }
+  .hero h1 em{color:var(--red);font-style:italic;}
+  .hero p{color:var(--graphite);max-width:520px;font-size:15px;margin:0;}
+
+  #dropzone{
+    margin-top:26px;
+    border:1.5px dashed rgba(242,239,233,0.28);
+    border-radius:4px;
+    background:rgba(242,239,233,0.03);
+    padding:54px 30px;
+    text-align:center;
+    transition:border-color .15s, background .15s;
+    cursor:pointer;
+  }
+  #dropzone.drag{border-color:var(--red);background:rgba(184,65,47,0.08);}
+  #dropzone .stamp{
+    display:inline-block;font-family:var(--display);font-style:italic;font-size:15px;
+    border:2px solid var(--red);color:var(--red);padding:6px 16px;border-radius:3px;
+    transform:rotate(-3deg);margin-bottom:16px;letter-spacing:.04em;
+  }
+  #dropzone h3{margin:0 0 6px;font-family:var(--display);font-size:20px;font-weight:600;}
+  #dropzone p{margin:0;color:var(--graphite);font-size:13.5px;}
+  #fileInput{display:none;}
+
+  /* ---------- Workbench ---------- */
+  #workbench{display:none;}
+  .toolbar{
+    display:flex;flex-wrap:wrap;gap:8px;margin:26px 0 26px;
+    padding-bottom:18px;border-bottom:1px solid rgba(242,239,233,0.12);
+  }
+  .tbtn{
+    display:flex;align-items:center;gap:7px;
+    background:transparent;border:1px solid rgba(242,239,233,0.22);
+    color:var(--paper);font-family:var(--body);font-size:13px;font-weight:500;
+    padding:9px 14px;border-radius:3px;cursor:pointer;transition:all .12s;
+  }
+  .tbtn:hover{border-color:var(--paper);background:rgba(242,239,233,0.06);}
+  .tbtn.active{background:var(--red);border-color:var(--red);color:#fff;}
+  .tbtn.primary{background:var(--green);border-color:var(--green);color:#fff;margin-left:auto;}
+  .tbtn.primary:hover{background:#23553f;}
+  .tbtn .ico{font-size:14px;line-height:1;}
+  .tbtn:disabled{opacity:.35;cursor:not-allowed;}
+
+  #pageGrid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+    gap:22px;
+  }
+  .pageCard{
+    background:var(--paper);border-radius:3px;position:relative;
+    box-shadow:0 8px 18px rgba(0,0,0,0.28);
+    cursor:grab;user-select:none;transition:transform .12s;
+  }
+  .pageCard.dragging{opacity:.35;}
+  .pageCard.deleted{display:none;}
+  .pageCard canvas{display:block;width:100%;border-radius:3px 3px 0 0;}
+  .pageMeta{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 10px;color:var(--ink);font-size:12px;font-weight:600;
+  }
+  .pageMeta .num{font-family:var(--display);}
+  .pageActions{display:flex;gap:4px;}
+  .pageActions button{
+    border:none;background:none;color:var(--ink);cursor:pointer;font-size:13px;
+    padding:3px 5px;border-radius:3px;opacity:.55;
+  }
+  .pageActions button:hover{opacity:1;background:rgba(0,0,0,0.06);}
+  .pageCard .annotLayer{position:absolute;top:0;left:0;width:100%;height:calc(100% - 34px);cursor:text;}
+
+  .textNote{
+    position:absolute;background:rgba(255,255,255,0.92);border:1px solid var(--red);
+    color:var(--ink);font-size:11px;padding:2px 4px;min-width:40px;border-radius:2px;
+    cursor:move;
+  }
+
+  footer{padding:30px 36px;text-align:center;color:var(--graphite);font-size:12px;border-top:1px solid rgba(242,239,233,0.1);}
+
+  .hint{font-size:12px;color:var(--graphite);margin-bottom:14px;}
+  #statusBar{font-size:12.5px;color:var(--graphite);margin-top:10px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="mark">Inkwell</span>
+    <span class="tag">PDF editor</span>
+  </div>
+  <span class="free-badge">100% free, runs in your browser</span>
+</header>
+
+<div class="stage">
+
+  <div class="hero" id="heroSection">
+    <h1>Mark it up.<br><em>Move it around.</em><br>Send it off.</h1>
+    <p>Reorder, rotate, delete, merge, and annotate PDF pages — entirely on your device. Nothing is uploaded anywhere.</p>
+
+    <div id="dropzone">
+      <div class="stamp">drop here</div>
+      <h3>Drag a PDF onto the desk</h3>
+      <p>or click to browse · you can add more files later to merge</p>
+      <input type="file" id="fileInput" accept="application/pdf" multiple>
+    </div>
+  </div>
+
+  <div id="workbench">
+    <div class="toolbar">
+      <button class="tbtn" id="addMoreBtn"><span class="ico">＋</span>Add PDF</button>
+      <button class="tbtn" id="rotateBtn"><span class="ico">⟲</span>Rotate selected</button>
+      <button class="tbtn" id="deleteBtn"><span class="ico">✕</span>Delete selected</button>
+      <button class="tbtn" id="textModeBtn"><span class="ico">T</span>Add text</button>
+      <button class="tbtn" id="selectAllBtn"><span class="ico">▦</span>Select all</button>
+      <button class="tbtn" id="clearSelBtn"><span class="ico">◇</span>Clear selection</button>
+      <button class="tbtn primary" id="downloadBtn"><span class="ico">↓</span>Download PDF</button>
+    </div>
+    <div class="hint">Click a page to select it (for rotate/delete). Drag pages to reorder. Toggle “Add text” then click on a page to drop a note.</div>
+    <div id="pageGrid"></div>
+    <div id="statusBar"></div>
+  </div>
+
+</div>
+
+<footer>Inkwell processes everything locally in your browser using pdf.js and pdf-lib — your files never leave your device.</footer>
+
+<script>
+const { PDFDocument, rgb, degrees } = PDFLib;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+let pages = []; // {sourceBytes index ref, pdfDoc index, rotation, deleted, canvasEl, id, sourceFileIdx, originalPageIndex, textNotes:[{x,y,text}]}
+let sourceFiles = []; // raw arraybuffers
+let nextId = 0;
+let selected = new Set();
+let textMode = false;
+let dragSrcIdx = null;
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const workbench = document.getElementById('workbench');
+const pageGrid = document.getElementById('pageGrid');
+const statusBar = document.getElementById('statusBar');
+
+['dragenter','dragover'].forEach(evt=>dropzone.addEventListener(evt,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+['dragleave','drop'].forEach(evt=>dropzone.addEventListener(evt,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop', e=>{ handleFiles(e.dataTransfer.files); });
+dropzone.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>handleFiles(e.target.files));
+document.getElementById('addMoreBtn').addEventListener('click', ()=>fileInput.click());
+
+async function handleFiles(fileList){
+  const files = Array.from(fileList).filter(f=>f.type==='application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+  if(!files.length) return;
+  statusBar.textContent = 'Loading...';
+  for(const file of files){
+    const buf = await file.arrayBuffer();
+    const fileIdx = sourceFiles.length;
+    sourceFiles.push(buf);
+    const pdf = await pdfjsLib.getDocument({data: buf.slice(0)}).promise;
+    for(let i=0;i<pdf.numPages;i++){
+      pages.push({
+        id: nextId++,
+        fileIdx, originalPageIndex: i,
+        rotation: 0, deleted:false, textNotes:[]
+      });
+    }
+    await renderNewPages(pdf, fileIdx);
+  }
+  document.getElementById('heroSection').style.display='none';
+  workbench.style.display='block';
+  statusBar.textContent = `${pages.filter(p=>!p.deleted).length} page(s) loaded.`;
+}
+
+async function renderNewPages(pdf, fileIdx){
+  for(let i=0;i<pdf.numPages;i++){
+    const pageObj = pages.find(p=>p.fileIdx===fileIdx && p.originalPageIndex===i);
+    const page = await pdf.getPage(i+1);
+    const viewport = page.getViewport({scale: 0.55});
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+    pageObj.canvas = canvas;
+  }
+  redraw();
+}
+
+function redraw(){
+  pageGrid.innerHTML='';
+  pages.forEach((p, idx)=>{
+    if(p.deleted) return;
+    const card = document.createElement('div');
+    card.className = 'pageCard' + (selected.has(p.id) ? ' active' : '');
+    card.style.outline = selected.has(p.id) ? '3px solid var(--red)' : 'none';
+    card.draggable = true;
+    card.dataset.idx = idx;
+
+    const canvasWrap = document.createElement('div');
+    canvasWrap.style.position='relative';
+    const c = document.createElement('canvas');
+    c.width = p.canvas.width; c.height = p.canvas.height;
+    c.style.transform = `rotate(${p.rotation}deg)`;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(p.canvas,0,0);
+    canvasWrap.appendChild(c);
+
+    const annotLayer = document.createElement('div');
+    annotLayer.className='annotLayer';
+    p.textNotes.forEach(note=>{
+      const n = document.createElement('div');
+      n.className='textNote';
+      n.style.left = note.x+'px'; n.style.top = note.y+'px';
+      n.textContent = note.text;
+      annotLayer.appendChild(n);
+    });
+    annotLayer.addEventListener('click', (e)=>{
+      if(!textMode) return;
+      e.stopPropagation();
+      const rect = annotLayer.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      const text = prompt('Note text:');
+      if(text){ p.textNotes.push({x,y,text}); redraw(); }
+    });
+    canvasWrap.appendChild(annotLayer);
+
+    const meta = document.createElement('div');
+    meta.className='pageMeta';
+    meta.innerHTML = `<span class="num">${idx+1}</span>`;
+    const actions = document.createElement('div');
+    actions.className='pageActions';
+    const rotBtn = document.createElement('button'); rotBtn.textContent='⟲';
+    rotBtn.title='Rotate this page';
+    rotBtn.addEventListener('click', e=>{e.stopPropagation(); p.rotation=(p.rotation+90)%360; redraw();});
+    const delBtn = document.createElement('button'); delBtn.textContent='✕';
+    delBtn.title='Delete this page';
+    delBtn.addEventListener('click', e=>{e.stopPropagation(); p.deleted=true; selected.delete(p.id); redraw();});
+    actions.appendChild(rotBtn); actions.appendChild(delBtn);
+    meta.appendChild(actions);
+
+    card.appendChild(canvasWrap);
+    card.appendChild(meta);
+
+    card.addEventListener('click', ()=>{
+      if(textMode) return;
+      if(selected.has(p.id)) selected.delete(p.id); else selected.add(p.id);
+      redraw();
+    });
+
+    card.addEventListener('dragstart', ()=>{ dragSrcIdx = idx; card.classList.add('dragging'); });
+    card.addEventListener('dragend', ()=>{ card.classList.remove('dragging'); });
+    card.addEventListener('dragover', e=>e.preventDefault());
+    card.addEventListener('drop', e=>{
+      e.preventDefault();
+      const targetIdx = idx;
+      if(dragSrcIdx===null || dragSrcIdx===targetIdx) return;
+      const [moved] = pages.splice(dragSrcIdx,1);
+      pages.splice(targetIdx,0,moved);
+      dragSrcIdx=null;
+      redraw();
+    });
+
+    pageGrid.appendChild(card);
+  });
+  statusBar.textContent = `${pages.filter(p=>!p.deleted).length} page(s) · ${selected.size} selected`;
+}
+
+document.getElementById('rotateBtn').addEventListener('click', ()=>{
+  pages.forEach(p=>{ if(selected.has(p.id)) p.rotation=(p.rotation+90)%360; });
+  redraw();
+});
+document.getElementById('deleteBtn').addEventListener('click', ()=>{
+  pages.forEach(p=>{ if(selected.has(p.id)) p.deleted=true; });
+  selected.clear();
+  redraw();
+});
+document.getElementById('selectAllBtn').addEventListener('click', ()=>{
+  pages.forEach(p=>{ if(!p.deleted) selected.add(p.id); });
+  redraw();
+});
+document.getElementById('clearSelBtn').addEventListener('click', ()=>{
+  selected.clear(); redraw();
+});
+const textBtn = document.getElementById('textModeBtn');
+textBtn.addEventListener('click', ()=>{
+  textMode = !textMode;
+  textBtn.classList.toggle('active', textMode);
+});
+
+document.getElementById('downloadBtn').addEventListener('click', async ()=>{
+  statusBar.textContent = 'Building your PDF...';
+  const outDoc = await PDFDocument.create();
+  const cache = {}; // fileIdx -> loaded PDFDocument
+
+  for(const p of pages){
+    if(p.deleted) continue;
+    if(!cache[p.fileIdx]){
+      cache[p.fileIdx] = await PDFDocument.load(sourceFiles[p.fileIdx]);
+    }
+    const [copiedPage] = await outDoc.copyPages(cache[p.fileIdx], [p.originalPageIndex]);
+    if(p.rotation){
+      const existing = copiedPage.getRotation().angle || 0;
+      copiedPage.setRotation(degrees((existing + p.rotation) % 360));
+    }
+    outDoc.addPage(copiedPage);
+
+    if(p.textNotes.length){
+      const { width, height } = copiedPage.getSize();
+      const scale = width / p.canvas.width;
+      for(const note of p.textNotes){
+        const pdfX = note.x * scale;
+        const pdfY = height - (note.y * scale);
+        copiedPage.drawText(note.text, {
+          x: pdfX, y: pdfY, size: 11,
+          color: rgb(0.72,0.25,0.18)
+        });
+      }
+    }
+  }
+
+  const bytes = await outDoc.save();
+  const blob = new Blob([bytes], {type:'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'inkwell-edited.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  statusBar.textContent = `Downloaded. ${pages.filter(p=>!p.deleted).length} page(s).`;
+});
+</script>
+</body>
+</html>
